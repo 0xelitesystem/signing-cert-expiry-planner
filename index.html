@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Signing Certificate Expiry Planner</title>
+<meta name="description" content="Compute, from a code signing certificate's validity dates and a list of shipped artifacts, the exact date each untimestamped binary goes dark, the renewal ladder under the CA/Browser Forum 460-day cap, and the last safe day to ship a bridge release.">
+<link rel="canonical" href="https://0xelitesystem.github.io/signing-cert-expiry-planner/">
+<meta property="og:title" content="Signing Certificate Expiry Planner">
+<meta property="og:description" content="Renewal ladder under the 460-day cap, per-artifact go-dark dates, and the last safe day to ship a bridge release. All date arithmetic, in your browser.">
+<meta property="og:url" content="https://0xelitesystem.github.io/signing-cert-expiry-planner/">
+<meta property="og:type" content="website">
+<meta name="twitter:card" content="summary">
+<script type="application/ld+json">
+{"@context":"https://schema.org","@type":"SoftwareApplication","name":"Signing Certificate Expiry Planner","applicationCategory":"DeveloperApplication","operatingSystem":"Any (browser)","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"url":"https://0xelitesystem.github.io/signing-cert-expiry-planner/","author":{"@type":"Person","name":"0xelitesystem","url":"https://elitesystem.ai"}}
+</script>
+<style>
+*,*::before,*::after{box-sizing:border-box}
+:root{
+  --bg:#0a0a0a; --bg-deep:#050505; --surface:#111110; --surface-2:#161614;
+  --ink:#e8e8e3; --ink-soft:#a8a8a3; --muted:#6e6e68; --rule:#1f1f1d; --rule-2:#2a2a27;
+  --accent:#d4ff3a; --accent-2:#ffb454; --on-accent:#0a0a0a; --code-bg:#111110;
+  --ok:#7ddc7d; --warn:#ffb454; --err:#ff6450; --info:#6fd3e0;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#e8ebef; --bg-deep:#f4f5f8; --surface:#dee2e8; --surface-2:#d3d7df;
+    --ink:#0a0a0a; --ink-soft:#2a2a27; --muted:#6e6e68; --rule:#c8cdd5; --rule-2:#aab0ba;
+    --accent:#2d6b00; --accent-2:#8a4d00; --on-accent:#ffffff; --code-bg:#dee2e8;
+    --ok:#1a5c2e; --warn:#8a4d00; --err:#a82d14; --info:#0f5c60;
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#e8ebef; --bg-deep:#f4f5f8; --surface:#dee2e8; --surface-2:#d3d7df;
+  --ink:#0a0a0a; --ink-soft:#2a2a27; --muted:#6e6e68; --rule:#c8cdd5; --rule-2:#aab0ba;
+  --accent:#2d6b00; --accent-2:#8a4d00; --on-accent:#ffffff; --code-bg:#dee2e8;
+  --ok:#1a5c2e; --warn:#8a4d00; --err:#a82d14; --info:#0f5c60;
+  color-scheme:light;
+}
+html,body{margin:0;padding:0;max-width:100%;overflow-x:hidden}
+body{
+  background:var(--bg); color:var(--ink);
+  font:16px/1.6 ui-sans-serif,system-ui,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:960px;margin:0 auto;padding:24px 16px 64px}
+a{color:var(--accent)}
+a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-visible{
+  outline:2px solid var(--accent); outline-offset:2px;
+}
+header.top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-start;justify-content:space-between;
+  border-bottom:1px solid var(--rule);padding-bottom:16px;margin-bottom:20px}
+h1{font-size:1.6rem;line-height:1.25;margin:0 0 6px}
+.tag{color:var(--ink-soft);font-size:.92rem;margin:0}
+h2{font-size:1.18rem;margin:32px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--rule)}
+h3{font-size:1rem;margin:20px 0 8px;color:var(--ink)}
+p{margin:0 0 12px}
+.lede{color:var(--ink);font-size:1rem}
+#theme-toggle{
+  background:var(--surface-2);color:var(--ink);border:1px solid var(--rule-2);
+  border-radius:8px;padding:8px 12px;font:inherit;font-size:.88rem;cursor:pointer;white-space:nowrap;
+}
+.panel{background:var(--surface);border:1px solid var(--rule);border-radius:10px;padding:14px;margin:0 0 14px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px}
+label{display:block;font-size:.86rem;color:var(--ink-soft);margin-bottom:5px}
+input,select,textarea{
+  width:100%;max-width:100%;background:var(--bg-deep);color:var(--ink);
+  border:1px solid var(--rule-2);border-radius:8px;padding:9px 10px;font:inherit;font-size:.95rem;
+}
+textarea{min-height:132px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:.88rem}
+.hint{font-size:.8rem;color:var(--ink-soft);margin:6px 0 0}
+.btnrow{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px}
+button.act{background:var(--accent);color:var(--on-accent);border:1px solid var(--accent);
+  border-radius:8px;padding:9px 14px;font:inherit;font-weight:600;font-size:.92rem;cursor:pointer}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--rule-2);
+  border-radius:8px;padding:9px 14px;font:inherit;font-size:.92rem;cursor:pointer}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
+table{border-collapse:collapse;width:100%;min-width:520px;font-size:.9rem}
+th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--rule);vertical-align:top}
+th{color:var(--ink-soft);font-weight:600;white-space:nowrap}
+td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+code,kbd,.mono{font-family:ui-monospace,SFMono-Regular,Consolas,"Liberation Mono",monospace;font-size:.88em}
+code{background:var(--code-bg);border:1px solid var(--rule);border-radius:5px;padding:1px 5px}
+pre{background:var(--code-bg);border:1px solid var(--rule);border-radius:8px;padding:12px;
+  overflow-x:auto;max-width:100%;font-size:.85rem;line-height:1.55;margin:0 0 12px}
+blockquote{margin:0 0 12px;padding:10px 14px;border-left:3px solid var(--accent-2);
+  background:var(--surface-2);border-radius:0 8px 8px 0}
+blockquote p:last-child{margin-bottom:0}
+.cite{font-size:.82rem;color:var(--ink-soft);margin:6px 0 16px;word-break:break-word}
+.stat{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:0 0 12px}
+.card{background:var(--surface-2);border:1px solid var(--rule-2);border-radius:9px;padding:11px 12px}
+.card .k{font-size:.78rem;color:var(--ink-soft);margin:0 0 4px}
+.card .v{font-size:1.15rem;font-weight:700;margin:0;word-break:break-word}
+.ok{color:var(--ok)} .warn{color:var(--warn)} .err{color:var(--err)} .info{color:var(--info)}
+.msg{border-radius:8px;padding:10px 12px;margin:0 0 12px;border:1px solid var(--rule-2);background:var(--surface-2)}
+.msg.bad{border-color:var(--err);color:var(--err)}
+.msg.warnbox{border-color:var(--warn);color:var(--warn)}
+.msg.good{border-color:var(--ok);color:var(--ok)}
+.msg ul{margin:6px 0 0;padding-left:20px}
+.mark{font-weight:700;color:var(--accent-2)}
+ul.tight{margin:0 0 12px;padding-left:20px}
+ul.tight li{margin-bottom:5px}
+footer{border-top:1px solid var(--rule);margin-top:40px;padding-top:16px;
+  font-size:.85rem;color:var(--ink-soft);display:flex;flex-wrap:wrap;gap:8px 14px}
+footer a{word-break:break-word}
+.sep{color:var(--ink-soft)}
+@media (max-width:420px){ h1{font-size:1.34rem} .wrap{padding:18px 12px 48px} }
+</style>
+<script>
+(function(){
+  try{
+    var t=localStorage.getItem("scep-theme");
+    if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);}
+    else{document.documentElement.removeAttribute("data-theme");}
+  }catch(e){}
+})();
+</script>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <div>
+    <h1>Signing certificate expiry planner</h1>
+    <p class="tag">Go-dark dates, the renewal ladder, and the last safe day to ship a bridge release. Windows Authenticode. All arithmetic, no network.</p>
+  </div>
+  <button id="theme-toggle" type="button" aria-label="Switch colour theme">Theme: dark</button>
+</header>
+
+<p class="lede">This is the arithmetic half of <a href="https://github.com/0xelitesystem/windows-code-signing-and-smartscreen-reference">windows-code-signing-and-smartscreen-reference</a>, which is the prose half: that repo explains what Authenticode, timestamping and SmartScreen reputation actually do, and this page does the date maths those rules imply. It is not a generic date subtractor. The catalog already has <a href="https://github.com/0xelitesystem/duration-calculator">duration-calculator</a> for subtracting two dates; this page encodes three specific signing rules on top of the subtraction, quoted and sourced below.</p>
+
+<h2>1. Certificate</h2>
+<div class="panel">
+  <div class="grid">
+    <div>
+      <label for="nb">notBefore (UTC, YYYY-MM-DD)</label>
+      <input id="nb" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="2026-03-01">
+    </div>
+    <div>
+      <label for="na">notAfter (UTC, YYYY-MM-DD)</label>
+      <input id="na" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="2027-06-04">
+    </div>
+    <div>
+      <label for="iss">Issued on (optional, defaults to notBefore)</label>
+      <input id="iss" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="">
+    </div>
+  </div>
+  <div class="btnrow">
+    <button id="fill-cap" class="ghost" type="button">Fill notAfter from the cap</button>
+  </div>
+  <p class="hint">The issue date decides which cap applies. The tool checks your notAfter against that cap and computes the cycle length in days rather than quoting a day count from memory.</p>
+</div>
+
+<h2>2. Release plan</h2>
+<div class="panel">
+  <div class="grid">
+    <div>
+      <label for="cad">Release cadence (weeks between releases)</label>
+      <input id="cad" type="number" min="1" max="520" step="1" value="6">
+    </div>
+    <div>
+      <label for="cov">Target coverage of the installed base (%)</label>
+      <input id="cov" type="number" min="1" max="99.9" step="0.1" value="90">
+    </div>
+    <div>
+      <label for="rate">Uptake per release cycle (%), your own assumption</label>
+      <input id="rate" type="number" min="1" max="99.9" step="0.1" value="50">
+    </div>
+  </div>
+  <p class="hint">Uptake per cycle is your input, not a published figure. Nothing on this page supplies an industry adoption rate, because there is no verifiable one to supply. Put your own telemetry in, or run the number twice at a pessimistic and an optimistic rate and take the earlier date.</p>
+</div>
+
+<h2>3. Shipped artifacts</h2>
+<div class="panel">
+  <label for="artifacts">One artifact per line: <code class="mono">name, timestamped</code>. Flag accepts yes/no, y/n, true/false, 1/0. Lines starting with # are ignored.</label>
+  <textarea id="artifacts" spellcheck="false" autocomplete="off"># name, timestamped?
+example-setup-1.0.0.exe, yes
+example-setup-1.1.0.exe, yes
+example-portable-1.1.0.exe, no
+example-updater-shim.dll, no</textarea>
+  <p class="hint">Replace these placeholder rows with your own build output. Nothing is uploaded; the parse runs in this tab.</p>
+</div>
+
+<h2>4. Renewal ladder</h2>
+<div class="panel">
+  <div class="grid">
+    <div>
+      <label for="lstart">Ladder start date (UTC, YYYY-MM-DD)</label>
+      <input id="lstart" type="text" inputmode="numeric" autocomplete="off" spellcheck="false" value="2026-03-01">
+    </div>
+    <div>
+      <label for="lcap">Cap: cycles to project</label>
+      <input id="lcap" type="number" min="1" max="60" step="1" value="12">
+    </div>
+  </div>
+  <div class="btnrow">
+    <button id="sync-start" class="ghost" type="button">Use notBefore as the ladder start</button>
+    <button id="compute" class="act" type="button">Compute</button>
+  </div>
+  <p class="hint">The ladder is computed from whatever start date you type. Change the start date and every row changes with it.</p>
+</div>
+
+<h2>Results</h2>
+<div id="results" aria-live="polite">
+  <div id="errors"></div>
+
+  <h3>Remaining signing life</h3>
+  <div id="life-out"></div>
+
+  <h3>Artifacts</h3>
+  <div id="artifacts-out"></div>
+
+  <h3>Bridge release deadline</h3>
+  <div id="bridge-out"></div>
+
+  <h3>Renewal ladder</h3>
+  <div id="ladder-out"></div>
+</div>
+
+<h2>The three rules this tool encodes</h2>
+
+<h3>Rule 1: without a timestamp, the signature dies with the certificate</h3>
+<blockquote><p>"Always time-stamp your Authenticode signatures. Without a time stamp, the signature becomes invalid when the signing certificate expires, and Windows will treat the binary as unsigned. Time stamping ensures long-term signature validity."</p></blockquote>
+<p class="cite">Microsoft, "Time Stamping Authenticode Signatures". <a href="https://learn.microsoft.com/en-us/windows/win32/seccrypto/time-stamping-authenticode-signatures">https://learn.microsoft.com/en-us/windows/win32/seccrypto/time-stamping-authenticode-signatures</a></p>
+<blockquote><p>"Time stamping allows Authenticode signatures to be verifiable even after the certificates used for signature have expired."</p>
+<p>"The countersignature method of time stamping implemented below allows for signatures to be verified even after the signing certificate has expired or been revoked."</p></blockquote>
+<p class="cite">Microsoft, same page. The second sentence covers revocation as well as expiry.</p>
+<p>The part worth stating precisely, in my own words rather than Microsoft's: signature validation happens at verify time, on the machine doing the verifying, not at download time. A copy that already sits on a user's disk or on a mirror is re-checked when it is next opened, so it starts failing on the same day a fresh download does. Nothing has to be re-published for that to happen. That is the mechanism, and it is why a go-dark date is a date rather than a rollout.</p>
+
+<h3>Rule 2: the validity cap, and which cap applies to you</h3>
+<blockquote><p>"For Code Signing Certificates issued before March 1st, 2026, the validity period MUST NOT exceed 39 months. For Code Signing Certificates issued on or after March 1st, 2026, the validity period MUST NOT exceed 460 days."</p></blockquote>
+<p class="cite">CA/Browser Forum, Baseline Requirements for the Issuance and Management of Publicly-Trusted Code Signing Certificates, section 6.3.2. <a href="https://github.com/cabforum/code-signing/blob/main/docs/CSBR.md">https://github.com/cabforum/code-signing/blob/main/docs/CSBR.md</a> and <a href="https://cabforum.org/working-groups/code-signing/requirements/">https://cabforum.org/working-groups/code-signing/requirements/</a></p>
+<p>39 months is a calendar span, not a fixed number of days, so the tool adds 39 months to your notBefore with month-end clamping and reports the resulting day count for your dates. It does not print a constant, because the constant depends on which months you cross. 460 days is a fixed count and is applied as one. Because 460 days is longer than a year, each renewal under the new cap falls later in the calendar than the previous one, not earlier, and the ladder above shows exactly how much later for your dates.</p>
+
+<h3>Rule 3: the bridge release, and why the deadline is not the expiry date</h3>
+<p>electron-updater checks a downloaded installer against the <code>publisherName</code> list that was compiled into the build the user already has. A build that only knows the old publisher name will refuse an installer signed with a new certificate whose subject differs. The fix is a bridge release that carries both the old and the new publisher name, signed while the old certificate is still valid, and it only helps the users who actually install it. So the real deadline is the last day you can ship that bridge and still have your target share of the installed base carrying it before the old certificate stops signing. The tool works backwards from notAfter using your cadence and your own uptake assumption, and prints the working.</p>
+
+<h2>Scope, and what this page is not</h2>
+<ul class="tight">
+  <li>Windows Authenticode only. Apple Developer ID is Apple's own PKI with 5-year certificate validity and sits outside the CA/Browser Forum code signing requirements, so none of the caps above apply to it.</li>
+  <li>Independent and unaffiliated. This page is not endorsed by, affiliated with, or connected to Microsoft, the CA/Browser Forum, or any certificate authority. The quotes above are short citations of published specifications, attributed inline with their sources.</li>
+  <li>Nothing here reads a certificate file. You type the dates in. There is no PKCS#7 parser, no network request, and no upload.</li>
+  <li>Every number on the results panel is computed from your inputs in this tab. Where a figure is an assumption rather than a computation, the page says so on the line that uses it.</li>
+</ul>
+
+<footer>
+  <a href="https://elitesystem.ai">elitesystem.ai</a>
+  <span class="sep" aria-hidden="true">|</span>
+  <a href="https://github.com/0xelitesystem/signing-cert-expiry-planner">source</a>
+  <span class="sep" aria-hidden="true">|</span>
+  <a href="https://0xelitesystem.github.io/">catalog</a>
+</footer>
+
+</div>
+<script>
+(function(){
+"use strict";
+
+var DAY = 86400000;
+var MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+var CUTOVER = Date.UTC(2026, 2, 1);
+
+function $(id){ return document.getElementById(id); }
+
+function esc(s){
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+}
+
+function parseDate(s){
+  if(typeof s !== "string") return null;
+  var m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s.replace(/^\s+|\s+$/g, ""));
+  if(!m) return null;
+  var y = +m[1], mo = +m[2], d = +m[3];
+  if(y < 1000 || y > 9999) return null;
+  if(mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  var t = Date.UTC(y, mo - 1, d);
+  var dt = new Date(t);
+  if(dt.getUTCFullYear() !== y || dt.getUTCMonth() !== mo - 1 || dt.getUTCDate() !== d) return null;
+  return t;
+}
+
+function fmt(t){
+  var d = new Date(t);
+  var y = d.getUTCFullYear(), m = d.getUTCMonth() + 1, day = d.getUTCDate();
+  return y + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
+}
+
+function addDays(t, n){ return t + n * DAY; }
+
+function addMonths(t, n){
+  var d = new Date(t);
+  var y = d.getUTCFullYear(), mo = d.getUTCMonth(), day = d.getUTCDate();
+  var total = mo + n;
+  var ny = y + Math.floor(total / 12);
+  var nm = ((total % 12) + 12) % 12;
+  var lastDay = new Date(Date.UTC(ny, nm + 1, 0)).getUTCDate();
+  return Date.UTC(ny, nm, Math.min(day, lastDay));
+}
+
+function addYears(t, n){ return addMonths(t, 12 * n); }
+
+function diffDays(a, b){ return Math.round((a - b) / DAY); }
+
+function todayUTC(){
+  var n = new Date();
+  return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate());
+}
+
+function capRuleFor(issueT){
+  return issueT >= CUTOVER
+    ? { key:"460", label:"460 days", apply:function(t){ return addDays(t, 460); } }
+    : { key:"39m", label:"39 months", apply:function(t){ return addMonths(t, 39); } };
+}
+
+function num(el, min, max){
+  var raw = el.value.replace(/^\s+|\s+$/g, "");
+  if(raw === "") return null;
+  var v = parseFloat(raw);
+  if(!isFinite(v)) return null;
+  if(v < min || v > max) return null;
+  return v;
+}
+
+function parseArtifacts(text){
+  var lines = text.split(/\r?\n/);
+  var rows = [], errs = [];
+  for(var i = 0; i < lines.length; i++){
+    var line = lines[i].replace(/^\s+|\s+$/g, "");
+    if(line === "" || line.charAt(0) === "#") continue;
+    var idx = Math.max(line.lastIndexOf("|"), line.lastIndexOf(","), line.lastIndexOf("\t"));
+    if(idx < 0){
+      errs.push("Line " + (i + 1) + ": no timestamped flag found. Write it as: name, yes");
+      continue;
+    }
+    var name = line.slice(0, idx).replace(/^\s+|\s+$/g, "");
+    var flag = line.slice(idx + 1).replace(/\s+/g, "").toLowerCase();
+    if(name === ""){
+      errs.push("Line " + (i + 1) + ": the artifact name is empty.");
+      continue;
+    }
+    var isYes = ["yes","y","true","1","timestamped","ts"].indexOf(flag) >= 0;
+    var isNo  = ["no","n","false","0","untimestamped","none"].indexOf(flag) >= 0;
+    if(!isYes && !isNo){
+      errs.push("Line " + (i + 1) + ": flag \"" + flag + "\" not understood. Use yes or no.");
+      continue;
+    }
+    rows.push({ name:name, ts:isYes });
+  }
+  return { rows:rows, errors:errs };
+}
+
+function buildLadder(startT, cycles){
+  var out = [], cur = startT;
+  for(var i = 1; i <= cycles; i++){
+    var rule = capRuleFor(cur);
+    var next = rule.apply(cur);
+    out.push({
+      n: i,
+      date: next,
+      len: diffDays(next, cur),
+      rule: rule.label,
+      drift: diffDays(next, addYears(startT, i))
+    });
+    cur = next;
+  }
+  return out;
+}
+
+function plural(n, word){ return n + " " + word + (n === 1 ? "" : "s"); }
+
+function run(){
+  var errBox = $("errors");
+  var lifeBox = $("life-out");
+  var artBox = $("artifacts-out");
+  var brBox = $("bridge-out");
+  var ladBox = $("ladder-out");
+
+  var errors = [];
+  var warnings = [];
+
+  var nbT = parseDate($("nb").value);
+  var naT = parseDate($("na").value);
+  var issRaw = $("iss").value.replace(/\s+/g, "");
+  var issT = issRaw === "" ? nbT : parseDate($("iss").value);
+
+  if(nbT === null) errors.push("notBefore is not a valid calendar date. Use YYYY-MM-DD, for example 2026-03-01.");
+  if(naT === null) errors.push("notAfter is not a valid calendar date. Use YYYY-MM-DD, for example 2027-06-04.");
+  if(issRaw !== "" && issT === null) errors.push("Issued on is not a valid calendar date. Leave it blank to use notBefore.");
+  if(nbT !== null && naT !== null && naT <= nbT){
+    errors.push("notAfter (" + fmt(naT) + ") is not after notBefore (" + fmt(nbT) + "). A certificate cannot expire before it starts.");
+  }
+
+  var cad = num($("cad"), 1, 520);
+  var cov = num($("cov"), 0.1, 99.9);
+  var rate = num($("rate"), 0.1, 99.9);
+  if(cad === null) errors.push("Release cadence must be a number of weeks between 1 and 520.");
+  if(cov === null) errors.push("Target coverage must be between 0.1 and 99.9 percent. A geometric rollout never reaches exactly 100 percent, so 100 is not accepted.");
+  if(rate === null) errors.push("Uptake per cycle must be between 0.1 and 99.9 percent.");
+
+  var lstartT = parseDate($("lstart").value);
+  var lcap = num($("lcap"), 1, 60);
+  if(lstartT === null) errors.push("Ladder start date is not a valid calendar date. Use YYYY-MM-DD.");
+  if(lcap === null) errors.push("Cycles to project must be a whole number between 1 and 60.");
+
+  var art = parseArtifacts($("artifacts").value);
+  for(var e = 0; e < art.errors.length; e++) errors.push(art.errors[e]);
+  if(art.rows.length === 0 && art.errors.length === 0){
+    errors.push("The artifact list is empty. Add at least one line in the form: name, yes");
+  }
+
+  if(errors.length){
+    var h = "<div class=\"msg bad\" role=\"alert\"><strong>Cannot compute.</strong><ul>";
+    for(var i = 0; i < errors.length; i++) h += "<li>" + esc(errors[i]) + "</li>";
+    errBox.innerHTML = h + "</ul></div>";
+    lifeBox.innerHTML = "";
+    artBox.innerHTML = "";
+    brBox.innerHTML = "";
+    ladBox.innerHTML = "";
+    return;
+  }
+
+  lcap = Math.round(lcap);
+  var rule = capRuleFor(issT);
+  var maxAllowed = rule.apply(nbT);
+  var capDays = diffDays(maxAllowed, nbT);
+  if(naT > maxAllowed){
+    warnings.push("Your notAfter is " + plural(diffDays(naT, maxAllowed), "day") +
+      " past the cap. For a certificate issued " + fmt(issT) + " the rule is " + rule.label +
+      ", which from notBefore " + fmt(nbT) + " lands on " + fmt(maxAllowed) + " (" + capDays + " days). Check the dates.");
+  }
+
+  errBox.innerHTML = warnings.length
+    ? "<div class=\"msg warnbox\" role=\"alert\"><strong>Check this.</strong><ul><li>" + esc(warnings[0]) + "</li></ul></div>"
+    : "";
+
+  var today = todayUTC();
+  var totalLife = diffDays(naT, nbT);
+  var left = diffDays(naT, today);
+  var elapsed = totalLife > 0 ? Math.max(0, Math.min(100, ((totalLife - left) / totalLife) * 100)) : 0;
+  var leftCls = left < 0 ? "err" : (left <= 60 ? "warn" : "ok");
+  var leftTxt = left < 0 ? plural(-left, "day") + " ago" : plural(left, "day");
+
+  lifeBox.innerHTML =
+    "<div class=\"stat\">" +
+    "<div class=\"card\"><p class=\"k\">Certificate stops signing</p><p class=\"v\">" + esc(fmt(naT)) + "</p></div>" +
+    "<div class=\"card\"><p class=\"k\">" + (left < 0 ? "Expired" : "Signing life left") +
+      " (from " + esc(fmt(today)) + ")</p><p class=\"v " + leftCls + "\">" + esc(leftTxt) + "</p></div>" +
+    "<div class=\"card\"><p class=\"k\">Total validity</p><p class=\"v\">" + totalLife + " days</p></div>" +
+    "<div class=\"card\"><p class=\"k\">Elapsed</p><p class=\"v\">" + elapsed.toFixed(1) + "%</p></div>" +
+    "</div>" +
+    "<p class=\"hint\">Applicable cap for a certificate issued " + esc(fmt(issT)) + ": " + esc(rule.label) +
+    ", which from this notBefore is " + capDays + " days and would end " + esc(fmt(maxAllowed)) + ".</p>";
+
+  var affected = [];
+  for(var a = 0; a < art.rows.length; a++){ if(!art.rows[a].ts) affected.push(art.rows[a]); }
+
+  var ah = "";
+  if(affected.length === 0){
+    ah += "<div class=\"msg good\" id=\"empty-state\"><strong>0 artifacts affected - timestamping did its job.</strong> " +
+      "All " + plural(art.rows.length, "artifact") + " you listed carry a timestamp, so their signatures stay verifiable past " +
+      esc(fmt(naT)) + ", and past a revocation as well. Nothing to schedule.</div>";
+  } else {
+    ah += "<div class=\"msg warnbox\"><strong>" + plural(affected.length, "artifact") + " of " + art.rows.length +
+      " go dark on " + esc(fmt(naT)) + ".</strong> Untimestamped binaries read as unsigned to Windows from that date onward, " +
+      "including copies already sitting on user machines and mirrors, because the check runs at verify time.</div>";
+  }
+  ah += "<div class=\"scroll\"><table><thead><tr><th>Artifact</th><th>Timestamped</th><th>Status</th>" +
+    "<th>Goes dark</th><th>Days from today</th></tr></thead><tbody>";
+  for(var r = 0; r < art.rows.length; r++){
+    var row = art.rows[r];
+    ah += "<tr><td>" + esc(row.name) + "</td>" +
+      "<td class=\"num\">" + (row.ts ? "yes" : "no") + "</td>" +
+      "<td class=\"" + (row.ts ? "ok" : "warn") + "\">" + (row.ts ? "unaffected" : "goes unsigned") + "</td>" +
+      "<td class=\"num\">" + (row.ts ? "n/a" : esc(fmt(naT))) + "</td>" +
+      "<td class=\"num\">" + (row.ts ? "n/a" : (left < 0 ? String(left) : "+" + left)) + "</td></tr>";
+  }
+  ah += "</tbody></table></div>";
+  artBox.innerHTML = ah;
+
+  var p = cov / 100, q = rate / 100;
+  var ratio = Math.log(1 - p) / Math.log(1 - q);
+  var cyclesNeeded = Math.ceil(ratio);
+  if(!isFinite(cyclesNeeded) || cyclesNeeded < 1) cyclesNeeded = 1;
+  var bridgeDays = Math.round(cyclesNeeded * cad * 7);
+  var bridgeBy = addDays(naT, -bridgeDays);
+  var slack = diffDays(bridgeBy, today);
+  var slackCls = slack < 0 ? "err" : (slack <= 30 ? "warn" : "ok");
+
+  brBox.innerHTML =
+    "<div class=\"stat\">" +
+    "<div class=\"card\"><p class=\"k\">Ship the bridge release by</p><p class=\"v " + slackCls + "\">" + esc(fmt(bridgeBy)) + "</p></div>" +
+    "<div class=\"card\"><p class=\"k\">" + (slack < 0 ? "Deadline passed" : "Time to decide") + "</p><p class=\"v " + slackCls + "\">" +
+      esc(slack < 0 ? plural(-slack, "day") + " ago" : plural(slack, "day")) + "</p></div>" +
+    "<div class=\"card\"><p class=\"k\">Release cycles needed</p><p class=\"v\">" + cyclesNeeded + "</p></div>" +
+    "</div>" +
+    "<p>The working, using your numbers and nothing else:</p>" +
+    "<pre>cycles  = ceil( ln(1 - " + p.toFixed(4) + ") / ln(1 - " + q.toFixed(4) + ") )\n" +
+    "        = ceil( " + Math.log(1 - p).toFixed(4) + " / " + Math.log(1 - q).toFixed(4) + " )\n" +
+    "        = ceil( " + ratio.toFixed(4) + " )\n" +
+    "        = " + cyclesNeeded + "\n" +
+    "window  = " + cyclesNeeded + " cycles x " + cad + " weeks x 7 = " + bridgeDays + " days\n" +
+    "ship by = " + fmt(naT) + " minus " + bridgeDays + " days = " + fmt(bridgeBy) + "</pre>" +
+    "<p class=\"hint\">The model assumes each release cycle picks up the same share of the users who have not updated yet. " +
+    "That share is the number you typed, not a figure this page supplies. " +
+    (slack < 0
+      ? "This deadline is already behind you, so plan a manual re-download path rather than an in-place update."
+      : "Ship earlier than this if you can. The date is the last safe one, not the target.") + "</p>";
+
+  var ladder = buildLadder(lstartT, lcap);
+  var startD = new Date(lstartT);
+  var startMonth = startD.getUTCMonth(), startDay = startD.getUTCDate();
+  var backToMonth = 0, backToDay = 0, allSame = true;
+  for(var L = 0; L < ladder.length; L++){
+    var dd = new Date(ladder[L].date);
+    if(!backToMonth && dd.getUTCMonth() === startMonth) backToMonth = ladder[L].n;
+    if(!backToDay && dd.getUTCDate() === startDay) backToDay = ladder[L].n;
+    if(ladder[L].len !== ladder[0].len) allSame = false;
+  }
+
+  var lh = "<div class=\"scroll\"><table id=\"ladder-table\"><thead><tr><th>Cycle</th><th>Renewal due</th>" +
+    "<th>Month</th><th>Day</th><th>Cycle length</th><th>Cap rule</th>" +
+    "<th>Days after the N-year mark</th></tr></thead><tbody id=\"ladder-body\">";
+  for(var k = 0; k < ladder.length; k++){
+    var row2 = ladder[k];
+    var d2 = new Date(row2.date);
+    var hit = (d2.getUTCMonth() === startMonth) ? " class=\"mark\"" : "";
+    lh += "<tr><td class=\"num\">" + row2.n + "</td>" +
+      "<td class=\"num\">" + esc(fmt(row2.date)) + "</td>" +
+      "<td" + hit + ">" + MON[d2.getUTCMonth()] + "</td>" +
+      "<td class=\"num\">" + d2.getUTCDate() + "</td>" +
+      "<td class=\"num\">" + row2.len + "</td>" +
+      "<td class=\"num\">" + esc(row2.rule) + "</td>" +
+      "<td class=\"num\">" + (row2.drift >= 0 ? "+" : "") + row2.drift + "</td></tr>";
+  }
+  lh += "</tbody></table></div>";
+
+  var first = ladder[0];
+  lh += "<p>Read off your own start date of <strong>" + esc(fmt(lstartT)) + "</strong>. " +
+    "Cycle 1 falls on " + esc(fmt(first.date)) + ", which is " + plural(first.drift, "day") +
+    " later in the calendar than the one-year mark, because a " + first.len +
+    "-day cycle is longer than a year. Renewals therefore fall later each time, not earlier.</p>";
+  lh += "<p>" +
+    (backToMonth
+      ? "The start month (" + MON[startMonth] + ") comes back around at cycle " + backToMonth + "."
+      : "The start month (" + MON[startMonth] + ") does not come back within the " + lcap + " cycles projected.") +
+    " " +
+    (backToDay
+      ? "The start day of the month (" + startDay + ") comes back at cycle " + backToDay + "."
+      : "The start day of the month (" + startDay + ") does not come back within the " + lcap + " cycles projected.") +
+    " " +
+    (allSame
+      ? "Every cycle here runs " + first.len + " days."
+      : "Cycle lengths differ here, because the cap that applies depends on the issue date of each renewal.") +
+    "</p>";
+  lh += "<p class=\"hint\">Each renewal date is the last day that certificate can sign, so treat every row as a deadline and buy the " +
+    "replacement before it. None of this is a lookup table: change the start date or the cycle count and every row is recomputed.</p>";
+  ladBox.innerHTML = lh;
+}
+
+function fillCap(){
+  var nbT = parseDate($("nb").value);
+  if(nbT === null){ run(); return; }
+  var issRaw = $("iss").value.replace(/\s+/g, "");
+  var issT = issRaw === "" ? nbT : parseDate($("iss").value);
+  if(issT === null) issT = nbT;
+  $("na").value = fmt(capRuleFor(issT).apply(nbT));
+  run();
+}
+
+function currentTheme(){
+  var a = document.documentElement.getAttribute("data-theme");
+  if(a === "light" || a === "dark") return a;
+  return (window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches) ? "light" : "dark";
+}
+
+function paintToggle(){
+  $("theme-toggle").textContent = "Theme: " + currentTheme();
+}
+
+function setTheme(t){
+  document.documentElement.setAttribute("data-theme", t);
+  try{ localStorage.setItem("scep-theme", t); }catch(e){}
+  paintToggle();
+}
+
+var ids = ["nb","na","iss","cad","cov","rate","artifacts","lstart","lcap"];
+for(var i = 0; i < ids.length; i++){
+  var el = $(ids[i]);
+  el.addEventListener("input", run);
+  el.addEventListener("change", run);
+}
+$("compute").addEventListener("click", run);
+$("fill-cap").addEventListener("click", fillCap);
+$("sync-start").addEventListener("click", function(){
+  $("lstart").value = $("nb").value;
+  run();
+});
+$("theme-toggle").addEventListener("click", function(){
+  setTheme(currentTheme() === "light" ? "dark" : "light");
+});
+
+paintToggle();
+run();
+
+})();
+</script>
+</body>
+</html>
