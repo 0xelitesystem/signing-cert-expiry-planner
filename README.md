@@ -4,7 +4,7 @@ A single-file browser tool that turns a Windows code signing certificate's valid
 
 **Live demo:** https://0xelitesystem.github.io/signing-cert-expiry-planner/
 
-This is the arithmetic half of [windows-code-signing-and-smartscreen-reference](https://github.com/0xelitesystem/windows-code-signing-and-smartscreen-reference), which is the prose half: that repo explains what Authenticode, timestamping and SmartScreen reputation do, and this one does the date maths those rules imply. It is also not a generic date subtractor. The catalog already has [duration-calculator](https://github.com/0xelitesystem/duration-calculator) for the difference between two dates; this page encodes three specific signing rules on top of that subtraction.
+This is the arithmetic half of [windows-code-signing-and-smartscreen-reference](https://github.com/0xelitesystem/windows-code-signing-and-smartscreen-reference), which is the prose half: that repo explains what Authenticode, timestamping and SmartScreen reputation do, and this one does the date maths those rules imply. It is also not a generic date subtractor. The catalog already has [date-span-business-days](https://github.com/0xelitesystem/date-span-business-days) for the difference between two dates; this page encodes three specific signing rules on top of that subtraction.
 
 ## Use
 
@@ -86,7 +86,7 @@ There is no build. It is one self-contained `index.html` with the CSS and JavaSc
 ## Related
 
 - [windows-code-signing-and-smartscreen-reference](https://github.com/0xelitesystem/windows-code-signing-and-smartscreen-reference) - the prose half: what Authenticode, timestamping and SmartScreen reputation actually do.
-- [duration-calculator](https://github.com/0xelitesystem/duration-calculator) - plain date and time differences, with none of the signing rules layered on.
+- [date-span-business-days](https://github.com/0xelitesystem/date-span-business-days) - plain date and time differences, with none of the signing rules layered on.
 - [timezone-and-utc-basics-reference](https://github.com/0xelitesystem/timezone-and-utc-basics-reference) - why this tool does every calculation in UTC.
 
 ## License
